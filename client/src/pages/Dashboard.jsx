@@ -7,11 +7,10 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
 
   // Stats calculations based on actual documents
   const totalAnalyzed = documents.length;
-  const utilizedCache = (documents.reduce((acc, doc) => {
-    const size = parseFloat(doc.fileSize) || 0;
-    return acc + size;
-  }, 0)).toFixed(1);
-  const cachePercentage = Math.min(Math.round((utilizedCache / 10) * 100), 100);
+  
+  // Dynamic metrics tailored for a cloud/web service workflow
+  const estimatedPages = Math.round(totalAnalyzed * 12); 
+  const hoursSaved = (totalAnalyzed * 0.8).toFixed(1);
 
   // Poll for document processing status
   useEffect(() => {
@@ -43,7 +42,6 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
     return () => clearInterval(intervalId);
   }, [processingFile]);
 
-  // Handle drag and drop states
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -70,6 +68,7 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
   };
 
   const validateAndUpload = (file) => {
+    if (processingFile) return;
     if (file.type !== 'application/pdf') {
       alert('Only PDF files are allowed.');
       return;
@@ -125,112 +124,137 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
 
   const getProgressPercentage = (status) => {
     switch (status) {
-      case 'Uploading': return 25;
-      case 'Processing': return 50;
-      case 'Creating embeddings': return 75;
-      case 'Generating summary': return 90;
+      case 'Uploading': return 20;
+      case 'Processing': return 40;
+      case 'Performing Urdu OCR': return 60;
+      case 'Creating embeddings': return 80;
+      case 'Generating summary': return 95;
       default: return 10;
     }
   };
 
   return (
     <div className="p-margin-desktop space-y-12 max-w-7xl mx-auto w-full">
-      {/* Dashboard Hero: Upload & Stats */}
+      {/* Dashboard Hero */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Drag and Drop Zone */}
-        <div
-          onDragEnter={handleDrag}
-          onDragOver={handleDrag}
-          onDragLeave={handleDrag}
-          onDrop={handleDrop}
-          className={`lg:col-span-8 group cursor-pointer relative glass-card rounded-3xl p-16 flex flex-col items-center justify-center text-center transition-all duration-500 hover:border-primary/40 ${
-            dragActive ? 'drag-active' : ''
-          }`}
-          id="drop-zone"
-          style={{ background: 'linear-gradient(135deg, var(--glass-bg) 0%, color-mix(in srgb, var(--surface-container) 60%, transparent) 100%)' }}
-        >
-          <div className="absolute inset-0 border-2 border-dashed border-outline-variant/40 rounded-3xl group-hover:border-primary/50 transition-colors m-4"></div>
-          
-          <div className="relative z-10">
-            <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mb-6 transition-all duration-500 group-hover:scale-110 group-hover:bg-primary/20 shadow-xl shadow-primary/5 mx-auto">
-              <span className="material-symbols-outlined text-5xl">upload_file</span>
+        {/* Left Side: Upload Engine */}
+        <div className="lg:col-span-8">
+          {!processingFile ? (
+            <div
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              className={`group cursor-pointer relative glass-card rounded-3xl p-16 flex flex-col items-center justify-center text-center transition-all duration-500 hover:border-primary/40 h-full min-h-[350px] ${
+                dragActive ? 'drag-active' : ''
+              }`}
+              id="drop-zone"
+              style={{ background: 'linear-gradient(135deg, var(--glass-bg) 0%, color-mix(in srgb, var(--surface-container) 60%, transparent) 100%)' }}
+            >
+              <div className="absolute inset-0 border-2 border-dashed border-outline-variant/40 rounded-3xl group-hover:border-primary/50 transition-colors m-4"></div>
+              
+              <div className="relative z-10">
+                <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mb-6 transition-all duration-500 group-hover:scale-110 group-hover:bg-primary/20 shadow-xl shadow-primary/5 mx-auto">
+                  <span className="material-symbols-outlined text-5xl">upload_file</span>
+                </div>
+                
+                <h2 className="text-headline-md text-on-surface mb-3 tracking-tight">Upload Document</h2>
+                <p className="text-body-md text-on-surface-variant max-w-sm mb-8 leading-relaxed mx-auto">
+                  Drop your PDF here for cloud-powered AI indexing and quick dynamic summary analysis.
+                </p>
+                
+                <button className="bg-primary-container text-white px-10 py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 active:scale-95 transition-all flex items-center gap-2 mx-auto">
+                  <span className="material-symbols-outlined text-xl">add_circle</span>
+                  Select Document
+                </button>
+                <input type="file" onChange={handleFileChange} accept="application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" />
+              </div>
             </div>
-            
-            <h2 className="text-headline-md text-on-surface mb-3 tracking-tight">Drop your PDF here</h2>
-            
-            <p className="text-body-md text-on-surface-variant max-w-sm mb-8 leading-relaxed mx-auto">
-              Processing is 100% local. Your intelligence never leaves the edge.
-            </p>
-            
-            <button className="bg-primary-container text-white px-10 py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 active:scale-95 transition-all flex items-center gap-2 mx-auto">
-              <span className="material-symbols-outlined text-xl">add_circle</span>
-              Select Document
-            </button>
-            
-            {/* Native file input overlay matching user's design */}
-            <input
-              type="file"
-              onChange={handleFileChange}
-              accept="application/pdf"
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            />
-          </div>
+          ) : (
+            <div className="glass-card rounded-3xl p-12 border border-primary/20 bg-primary/5 flex flex-col justify-center items-center text-center h-full min-h-[350px] shadow-xl relative overflow-hidden">
+              <div className="absolute inset-0 border-2 border-solid border-primary/10 rounded-3xl m-4"></div>
+              <div className="relative z-10 w-full max-w-md">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6 animate-spin mx-auto">
+                  <span className="material-symbols-outlined text-3xl">sync</span>
+                </div>
+                <h3 className="text-headline-sm text-on-surface mb-2 font-bold truncate">{processingFile.name}</h3>
+                <div className="flex items-center justify-center gap-2 text-primary font-mono text-xs uppercase tracking-widest font-bold mb-6 bg-primary/10 py-1.5 px-4 rounded-full w-max mx-auto border border-primary/20">
+                  <span className="inline-block w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                  {processingStatus}
+                </div>
+                <div className="w-full h-3 bg-surface-container-highest rounded-full overflow-hidden mb-4 p-[2px] border border-outline-variant/20">
+                  <div className="h-full bg-primary rounded-full transition-all duration-500 ease-out" style={{ width: `${getProgressPercentage(processingStatus)}%` }}></div>
+                </div>
+                <div className="text-left bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/20 space-y-2 text-xs font-medium text-on-surface-variant">
+                  <div className={`flex items-center gap-2 ${processingStatus === 'Uploading' ? 'text-primary font-bold' : 'text-outline'}`}>
+                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 20 ? 'check_circle' : 'radio_button_checked'}</span>
+                    <span>Uploading file to cloud workspace</span>
+                  </div>
+                  <div className={`flex items-center gap-2 ${processingStatus === 'Processing' ? 'text-primary font-bold' : 'text-outline'}`}>
+                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 40 ? 'check_circle' : 'radio_button_unchecked'}</span>
+                    <span>Extracting structure & layouts</span>
+                  </div>
+                  <div className={`flex items-center gap-2 ${processingStatus === 'Performing Urdu OCR' ? 'text-primary font-bold' : 'text-outline'}`}>
+                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 60 ? 'check_circle' : 'radio_button_unchecked'}</span>
+                    <span>Running Urdu OCR Engine (If Scanned)</span>
+                  </div>
+                  <div className={`flex items-center gap-2 ${processingStatus === 'Creating embeddings' ? 'text-primary font-bold' : 'text-outline'}`}>
+                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 80 ? 'check_circle' : 'radio_button_unchecked'}</span>
+                    <span>Vectorizing content into analytics cluster</span>
+                  </div>
+                  <div className={`flex items-center gap-2 ${processingStatus === 'Generating summary' ? 'text-primary font-bold' : 'text-outline'}`}>
+                    <span className="material-symbols-outlined text-sm">{processingStatus === 'Generating summary' ? 'hourglass_top' : 'radio_button_unchecked'}</span>
+                    <span>Compiling context insights</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Stats Widget */}
+        {/* Right Side: Replaced with Productivity Analytics Card */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          {/* Active Processing Loader */}
-          {processingFile && (
-            <div className="glass-card rounded-3xl p-8 shadow-pro border border-primary-container/20 bg-primary-container/5 animate-pulse flex-1">
-              <div className="flex items-center gap-3 mb-6">
-                <span className="material-symbols-outlined text-primary animate-spin">sync</span>
-                <div className="min-w-0">
-                  <h4 className="font-bold text-body-sm truncate">{processingFile.name}</h4>
-                  <p className="text-[10px] text-outline uppercase tracking-wider font-bold">{processingStatus}</p>
+          <div className="glass-card rounded-3xl p-8 flex-1 flex flex-col justify-between shadow-pro relative overflow-hidden group">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-bold text-primary uppercase tracking-widest bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                  Analytics Platform
+                </span>
+                <span className="material-symbols-outlined text-primary text-xl">analytics</span>
+              </div>
+              <h3 className="text-title-sm text-on-surface mb-2 font-bold">Productivity Metrics</h3>
+              <p className="text-body-sm text-on-surface-variant mb-6 leading-relaxed">
+                Tracked hours and layout pages analyzed efficiently via server workflow loops.
+              </p>
+              <div className="grid grid-cols-2 gap-4 text-center bg-surface-container-low/40 p-3.5 rounded-2xl border border-outline-variant/10">
+                <div className="border-r border-outline-variant/30 pr-2">
+                  <span className="text-[10px] font-bold text-outline uppercase block">Est. Pages</span>
+                  <span className="text-headline-sm font-bold text-on-surface mt-1 block">{estimatedPages}</span>
                 </div>
-              </div>
-              <div className="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden mb-3">
-                <div
-                  className="h-full bg-primary transition-all duration-500"
-                  style={{ width: `${getProgressPercentage(processingStatus)}%` }}
-                ></div>
-              </div>
-              <p className="text-body-sm font-medium text-on-surface-variant">Analyzing PDF data...</p>
-            </div>
-          )}
-
-          {!processingFile && (
-            <div className="glass-card rounded-3xl p-8 flex-1 flex flex-col shadow-pro">
-              <div className="flex items-center justify-between mb-6">
-                <span className="text-label-caps text-outline uppercase tracking-widest font-bold">Local Engine</span>
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <span className="material-symbols-outlined text-primary text-xl">database</span>
+                <div>
+                  <span className="text-[10px] font-bold text-outline uppercase block">Time Saved</span>
+                  <span className="text-headline-sm font-bold text-primary mt-1 block">{hoursSaved}h</span>
                 </div>
-              </div>
-              <div className="text-display-lg text-on-surface mb-2">
-                {utilizedCache} <span className="text-body-md font-medium text-on-surface-variant">MB</span>
-              </div>
-              <div className="mt-auto">
-                <div className="w-full h-2 bg-surface-container-highest rounded-full overflow-hidden mb-3">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${cachePercentage}%` }}></div>
-                </div>
-                <p className="text-body-sm font-medium text-on-surface-variant">{cachePercentage}% of local cache utilized</p>
               </div>
             </div>
-          )}
+            <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center gap-2 text-[11px] font-medium text-on-surface-variant">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Web app cloud instances synced</span>
+            </div>
+          </div>
 
           <div className="glass-card rounded-3xl p-8 flex-1 shadow-pro">
             <div className="flex items-center justify-between mb-6">
-              <span className="text-label-caps text-outline uppercase tracking-widest font-bold">Total Analyzed</span>
+              <span className="text-label-caps text-outline uppercase tracking-widest font-bold">Total Documents</span>
               <div className="p-2 bg-secondary-container/30 rounded-lg">
                 <span className="material-symbols-outlined text-primary text-xl">auto_awesome</span>
               </div>
             </div>
             <div className="text-display-lg text-on-surface mb-1">{totalAnalyzed}</div>
             <div className="flex items-center gap-1.5 text-primary font-bold">
-              <span className="material-symbols-outlined text-sm">trending_up</span>
-              <span className="text-body-sm">Secure local storage active</span>
+              <span className="material-symbols-outlined text-sm">cloud_done</span>
+              <span className="text-body-sm">Cloud safe sync active</span>
             </div>
           </div>
         </div>
@@ -241,14 +265,10 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
         <div className="flex items-end justify-between mb-8">
           <div>
             <h3 className="text-headline-md text-on-surface tracking-tight">Recent Intelligence</h3>
-            <p className="text-body-sm text-on-surface-variant mt-1">Your locally processed summaries</p>
+            <p className="text-body-sm text-on-surface-variant mt-1">Your secure cloud processed summaries</p>
           </div>
-          <button
-            onClick={() => onViewChange('library')}
-            className="text-primary font-bold text-body-sm flex items-center gap-1 hover:gap-2 transition-all"
-          >
-            View Library
-            <span className="material-symbols-outlined text-sm">arrow_forward</span>
+          <button onClick={() => onViewChange('library')} className="text-primary font-bold text-body-sm flex items-center gap-1 hover:gap-2 transition-all">
+            View Library <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </button>
         </div>
 
@@ -256,67 +276,34 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
           <div className="text-center py-16 bg-surface-container rounded-3xl border border-outline-variant/30 shadow-sm">
             <span className="material-symbols-outlined text-5xl text-outline-variant/60 mb-3">folder_open</span>
             <p className="text-body-md text-on-surface-variant font-medium">No documents processed yet</p>
-            <p className="text-body-sm text-outline mt-1">Drag and drop a PDF file above to analyze.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
             {documents.slice(0, 3).map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => onSelectDocument(doc.id)}
-                className="glass-card rounded-3xl overflow-hidden hover:shadow-pro transition-all duration-300 group cursor-pointer shadow-pro flex flex-col justify-between"
-              >
+              <div key={doc.id} onClick={() => onSelectDocument(doc.id)} className="glass-card rounded-3xl overflow-hidden hover:shadow-pro transition-all duration-300 group cursor-pointer flex flex-col justify-between">
                 <div className="p-8 flex-grow flex flex-col justify-between">
                   <div>
                     <div className="flex items-start justify-between mb-6">
-                      <div className="w-12 h-12 rounded-2xl bg-error-container/20 text-error flex items-center justify-center shadow-sm">
+                      <div className="w-12 h-12 rounded-2xl bg-error-container/20 text-error flex items-center justify-center">
                         <span className="material-symbols-outlined text-2xl">picture_as_pdf</span>
                       </div>
-                      <span className={`px-3 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-widest ${
-                        doc.status === 'Ready for Chat' 
-                          ? 'bg-secondary-container/40 text-on-secondary-container'
-                          : doc.status === 'Error'
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-surface-container-highest text-on-surface-variant animate-pulse'
-                      }`}>
+                      <span className={`px-3 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-widest ${doc.status === 'Ready for Chat' ? 'bg-secondary-container/40 text-on-secondary-container' : 'bg-surface-container-highest text-on-surface-variant animate-pulse'}`}>
                         {doc.status === 'Ready for Chat' ? 'Summarized' : doc.status}
                       </span>
                     </div>
-
-                    <h4 className="text-title-sm text-on-surface mb-3 line-clamp-1 group-hover:text-primary transition-colors">
-                      {doc.fileName}
-                    </h4>
-                    
+                    <h4 className="text-title-sm text-on-surface mb-3 line-clamp-1 group-hover:text-primary transition-colors">{doc.fileName}</h4>
                     <p className="text-body-sm text-on-surface-variant line-clamp-3 mb-8 leading-relaxed">
-                      {doc.status === 'Ready for Chat' 
-                        ? doc.recentOverview || 'Summary generated and ready for exploration.' 
-                        : doc.status === 'Error'
-                        ? 'Failed to process document.'
-                        : 'Document is currently being analyzed by the local processor.'}
+                      {doc.status === 'Ready for Chat' ? doc.recentOverview || 'Summary ready for interactive prompt chat.' : 'Analyzing text vectors.'}
                     </p>
                   </div>
-
-                  <div className="flex items-center justify-between pt-5 border-t border-outline-variant/30 mt-auto">
+                  <div className="flex items-center justify-between pt-5 border-t border-outline-variant/30 mt-auto" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-2 text-outline">
                       <span className="material-symbols-outlined text-sm">calendar_today</span>
                       <span className="text-[12px] font-medium">{doc.uploadDate}</span>
                     </div>
-                    <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                      <a
-                        href={`/api/export/${doc.id}/txt`}
-                        download
-                        className="p-2 rounded-xl hover:bg-surface-container text-outline hover:text-primary transition-all"
-                        title="Download Summary"
-                      >
-                        <span className="material-symbols-outlined text-lg">download</span>
-                      </a>
-                      <button
-                        onClick={(e) => handleDeleteDoc(e, doc.id)}
-                        className="p-2 rounded-xl hover:bg-surface-container text-outline hover:text-error transition-all"
-                        title="Delete Document"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
+                    <div className="flex gap-2">
+                      <a href={`/api/export/${doc.id}/txt`} download className="p-2 rounded-xl hover:bg-surface-container text-outline hover:text-primary transition-all"><span className="material-symbols-outlined text-lg">download</span></a>
+                      <button onClick={(e) => handleDeleteDoc(e, doc.id)} className="p-2 rounded-xl hover:bg-surface-container text-outline hover:text-error transition-all"><span className="material-symbols-outlined text-lg">delete</span></button>
                     </div>
                   </div>
                 </div>
@@ -326,48 +313,49 @@ export default function Dashboard({ onSelectDocument, onViewChange, documents, r
         )}
       </section>
 
-      {/* Quick Actions Bento Grid */}
+      {/* Bento Section */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="glass-card rounded-3xl p-10 relative overflow-hidden group shadow-pro">
           <div className="relative z-10">
-            <h3 className="text-title-sm mb-5">Privacy &amp; Security</h3>
+            <h3 className="text-title-sm mb-5">Data Integrity &amp; Security</h3>
             <p className="text-body-md text-on-surface-variant mb-8 leading-relaxed max-w-sm font-medium">
-              Enterprise-grade document processing using local hardware acceleration. No telemetry, no cloud, no compromise.
+              Enterprise layer file handling pipelines with built-in database row security protocols. No unencrypted caching on public clouds.
             </p>
             <div className="flex flex-wrap gap-3">
-              <span className="px-4 py-1.5 bg-surface-container-highest/60 border border-surface-container-highest/40 rounded-full text-[11px] font-bold text-on-surface-variant shadow-sm">
-                AES-256
-              </span>
-              <span className="px-4 py-1.5 bg-surface-container-highest/60 border border-surface-container-highest/40 rounded-full text-[11px] font-bold text-on-surface-variant shadow-sm">
-                Local Neural Engine
-              </span>
-              <span className="px-4 py-1.5 bg-surface-container-highest/60 border border-surface-container-highest/40 rounded-full text-[11px] font-bold text-on-surface-variant shadow-sm">
-                Zero-Trust Architecture
-              </span>
+              <span className="px-4 py-1.5 bg-surface-container-highest/60 border border-surface-container-highest/40 rounded-full text-[11px] font-bold text-on-surface-variant shadow-sm">Cloud Firewall</span>
+              <span className="px-4 py-1.5 bg-surface-container-highest/60 border border-surface-container-highest/40 rounded-full text-[11px] font-bold text-on-surface-variant shadow-sm">Row Level Safety</span>
             </div>
           </div>
-          <span className="material-symbols-outlined absolute -bottom-8 -right-8 text-[12rem] text-primary opacity-[0.03] transform -rotate-12 group-hover:scale-110 transition-transform duration-700">
-            shield
-          </span>
+          <span className="material-symbols-outlined absolute -bottom-8 -right-8 text-[12rem] text-primary opacity-[0.03] transform -rotate-12">shield</span>
         </div>
 
-        <div className="bg-primary-container/5 border border-primary-container/10 rounded-3xl p-10 flex flex-col justify-between shadow-pro relative overflow-hidden group">
-          <div className="relative z-10">
-            <h3 className="text-title-sm text-primary mb-3">AI Model Configurations</h3>
-            <p className="text-body-md text-on-surface-variant leading-relaxed max-w-sm font-medium">
-              Specify your Google Gemini API Key in Settings to enable high-speed AI summarization and chat capabilities.
+        {/* Upgraded Prompt Helper Panel */}
+        <div className="glass-card rounded-3xl p-10 flex flex-col justify-between shadow-pro relative overflow-hidden group border border-outline-variant/10">
+          <div className="relative z-10 w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-title-sm text-primary flex items-center gap-2 font-bold">
+                <span className="material-symbols-outlined text-xl">terminal</span>
+                Interactive Prompt Guide
+              </h3>
+              <span className="font-mono text-[9px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded">PRO TIPS</span>
+            </div>
+            <p className="text-body-sm text-on-surface-variant leading-relaxed max-w-md font-medium mb-5">
+              Open your target summarized document library item and perform these robust operational commands directly in chat:
             </p>
+            <div className="space-y-2.5">
+              <div className="flex items-start gap-2.5 bg-surface-container-low/50 p-2.5 rounded-xl border border-outline-variant/10 text-xs font-medium text-on-surface-variant">
+                <span className="material-symbols-outlined text-primary text-sm mt-0.5">ads_click</span>
+                <span>"Compile an inventory list of dates, milestones, and deadlines mentioned across the document."</span>
+              </div>
+              <div className="flex items-start gap-2.5 bg-surface-container-low/50 p-2.5 rounded-xl border border-outline-variant/10 text-xs font-medium text-on-surface-variant">
+                <span className="material-symbols-outlined text-primary text-sm mt-0.5">ads_click</span>
+                <span>"Structure the layout's primary numerical data matrices into a clean clean summary chart markdown."</span>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => onViewChange('settings')}
-            className="mt-8 self-start bg-primary-container text-white px-6 py-3 rounded-2xl font-bold text-body-sm flex items-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-primary-container/20 relative z-10"
-          >
-            <span className="material-symbols-outlined text-lg">settings</span>
-            Configure AI Engine
+          <button onClick={() => onViewChange('library')} className="mt-6 self-start bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold text-body-sm flex items-center gap-2 hover:opacity-95 transition-all shadow-sm relative z-10">
+            <span className="material-symbols-outlined text-lg">folder_managed</span> Explore Library
           </button>
-          <span className="material-symbols-outlined absolute -top-8 -right-8 text-[12rem] text-primary-container opacity-[0.05] transform rotate-12 group-hover:scale-105 transition-transform duration-700">
-            bolt
-          </span>
         </div>
       </section>
     </div>

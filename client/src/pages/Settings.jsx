@@ -49,7 +49,6 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
   const handleWipeData = async () => {
     if (confirm('CAUTION: This will irreversibly delete all PDF indexes, summaries, and chat history. Continue?')) {
       try {
-        // Fetch all documents first to delete them
         const docsRes = await fetch('/api/documents');
         if (docsRes.ok) {
           const docs = await docsRes.json();
@@ -58,7 +57,7 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
           );
           await Promise.all(deletePromises);
           refreshDocuments();
-          alert('All local database files successfully wiped.');
+          alert('All database files successfully wiped.');
         }
       } catch (err) {
         console.error('Wipe data error:', err);
@@ -73,7 +72,7 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
       {/* Settings Header */}
       <div>
         <h2 className="text-display-lg font-bold text-on-surface mb-2">Settings</h2>
-        <p className="text-on-surface-variant text-body-md">Configure your theme, and security preferences.</p>
+        <p className="text-on-surface-variant text-body-md">Configure your theme, file management rules, and retention metrics.</p>
       </div>
 
       <div className="space-y-6">
@@ -91,15 +90,15 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
           
           <div className="divide-y divide-outline-variant/30 dark:divide-gray-700">
             
-            {/* Toggle On Disk Encryption */}
+            {/* Toggle Encryption */}
             <div className="p-6 flex items-center justify-between hover:bg-surface-container-low/30 transition-colors">
               <div className="flex gap-4 items-center">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                   <span className="material-symbols-outlined">encrypted</span>
                 </div>
                 <div>
-                  <p className="font-bold text-body-md text-on-surface">On-Disk Encryption</p>
-                  <p className="text-body-sm text-outline">Encrypt all cached PDF summaries using AES-256 local keys.</p>
+                  <p className="font-bold text-body-md text-on-surface">Data Store Encryption</p>
+                  <p className="text-body-sm text-outline">Encrypt document models and textual summary indices inside server arrays using AES-256 standard.</p>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -141,15 +140,15 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
               </div>
             </div>
 
-            {/* Wipe local database */}
+            {/* Wipe database */}
             <div className="p-6 flex items-center justify-between bg-error/5">
               <div className="flex gap-4 items-center">
                 <div className="w-10 h-10 rounded-lg bg-error/10 flex items-center justify-center text-error">
                   <span className="material-symbols-outlined">delete_forever</span>
                 </div>
                 <div>
-                  <p className="font-bold text-body-md text-error">Wipe All Local Data</p>
-                  <p className="text-body-sm text-outline">Irreversibly delete all PDF indexes, text databases, and AI chat memory caches.</p>
+                  <p className="font-bold text-body-md text-error">Wipe All App Data</p>
+                  <p className="text-body-sm text-outline">Irreversibly clean up all document vector indexes, parsed text buffers, and response logs from the system.</p>
                 </div>
               </div>
               <button
@@ -200,7 +199,7 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
             </div>
           </section>
 
-          {/* Storage Section */}
+          {/* Upgraded Clean Storage Management & Retention Card */}
           <section className="bg-surface-container-highest border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col">
             <div className="px-6 py-5 border-b border-gray-400/30 dark:border-gray-700">
               <div className="flex items-center gap-2">
@@ -215,22 +214,22 @@ export default function Settings({ theme, onThemeChange, refreshDocuments }) {
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between items-end mb-2">
-                    <span className="text-body-sm font-bold text-on-surface">System Storage Cache</span>
-                    <span className="text-body-sm font-bold text-primary">Local Cache Active</span>
+                    <span className="text-body-sm font-bold text-on-surface">Workspace Allocation</span>
+                    <span className="text-[11px] px-2.5 py-0.5 font-mono font-bold bg-primary/10 text-primary border border-primary/20 rounded">Cloud Synced</span>
                   </div>
-                  <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
-                    <div className="h-full bg-primary" style={{ width: '15%' }}></div>
-                  </div>
+                  <p className="text-body-sm text-on-surface-variant leading-relaxed">
+                    All document vectors, metadata schema structures, and context caches are preserved securely inside your authenticated space.
+                  </p>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-2 bg-surface-container-low/50 p-3 rounded-lg border border-gray-400/30 dark:border-gray-700 text-xs">
                   <div className="flex justify-between items-center text-on-surface-variant font-medium">
-                    <span>PDF Extraction Buffer</span>
-                    <span className="font-mono text-outline">Stored Session Only</span>
+                    <span>Database Engine Pipeline</span>
+                    <span className="font-mono text-primary font-bold">Relational Vector Cluster</span>
                   </div>
                   <div className="flex justify-between items-center text-on-surface-variant font-medium">
-                    <span>Vector Embeddings</span>
-                    <span className="font-mono text-outline">Temporary Session</span>
+                    <span>Global Activity Logging</span>
+                    <span className="font-mono text-emerald-500 font-bold">STANDARD SECURITY</span>
                   </div>
                 </div>
               </div>

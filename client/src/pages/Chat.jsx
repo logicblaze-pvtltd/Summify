@@ -14,34 +14,36 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
   const [fullDoc, setFullDoc] = useState(null);
   const [loadingDoc, setLoadingDoc] = useState(false);
 
+  // Fetch / Sync document details securely on docId alteration
   useEffect(() => {
+    let isMounted = true;
     if (docId) {
       setLoadingDoc(true);
       const fetchFullDoc = async () => {
         try {
           const res = await fetch(`/api/documents/${docId}`);
-          if (res.ok) {
+          if (res.ok && isMounted) {
             const data = await res.json();
             setFullDoc(data);
           }
         } catch (err) {
           console.error('Error fetching full document details:', err);
         } finally {
-          setLoadingDoc(false);
+          if (isMounted) setLoadingDoc(false);
         }
       };
       fetchFullDoc();
     } else {
       setFullDoc(null);
     }
+    return () => { isMounted = false; };
   }, [docId, docMeta?.status]);
 
   const doc = fullDoc;
 
-  // Initialize messages and document state when loaded
+  // Initialize messages and document state when loaded gracefully
   useEffect(() => {
     if (doc) {
-      // Set initial welcome message
       const welcomeMessage = {
         id: 'welcome',
         sender: 'ai',
@@ -49,7 +51,6 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
         suggestions: ['What is the main purpose of this document?', 'Summarize key takeaways', 'List important dates', 'Who are the stakeholders?']
       };
 
-      // Load history if any
       const history = doc.chatHistory || [];
       const historyMessages = [];
       history.forEach((turn, idx) => {
@@ -61,7 +62,7 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
     }
   }, [docId, !!doc]);
 
-  // Scroll to bottom of chat when new messages arrive
+  // Scroll to bottom of chat safely
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -90,9 +91,8 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
 
   const handleSend = async (textToSend) => {
     const query = textToSend || inputText;
-    if (!query.trim()) return;
+    if (!query.trim() || loading) return;
 
-    // Add user message
     const userMsgId = 'user-' + Date.now();
     const newUserMessage = { id: userMsgId, sender: 'user', text: query };
     setMessages(prev => [...prev, newUserMessage]);
@@ -103,7 +103,10 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
     try {
       const response = await fetch(`/api/chat/${docId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Connection': 'close' // Forces proxy pool to clear active pipeline bottlenecks
+        },
         body: JSON.stringify({ question: query })
       });
 
@@ -112,19 +115,17 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
       }
 
       const data = await response.json();
-
-      // Add AI response
       const aiMsgId = 'ai-' + Date.now();
       setMessages(prev => [...prev, { id: aiMsgId, sender: 'ai', text: data.answer }]);
-
-      // Refresh local document history
+      
+      // Update local storage arrays
       refreshDocuments();
     } catch (err) {
       console.error('Chat error:', err);
       setMessages(prev => [...prev, {
         id: 'err-' + Date.now(),
         sender: 'ai',
-        text: 'Sorry, I encountered an error communicating with the AI. Please verify the backend and Gemini API key configurations.'
+        text: 'Sorry, I encountered an error communicating with the AI. Please verify the backend configuration or re-attempt.'
       }]);
     } finally {
       setLoading(false);
@@ -136,7 +137,7 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
       try {
         const res = await fetch(`/api/chat/${docId}/clear`, { method: 'POST' });
         if (res.ok) {
-          setMessages([messages[0]]); // keep welcome message
+          setMessages([messages[0]]);
           refreshDocuments();
         }
       } catch (err) {
@@ -165,7 +166,6 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
     document.body.removeChild(link);
   };
 
-  // Convert markdown-like syntax to basic HTML tags for summary rendering
   const renderMarkdown = (text) => {
     if (!text) return '';
     let html = text
@@ -181,12 +181,10 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
     return `<p class="text-body-sm text-on-surface-variant leading-relaxed mb-3">${html}</p>`;
   };
 
-  // Split text into pages for mock pdf viewer
   const getPagesText = () => {
     if (!doc.text) return ["This document has no readable text content."];
     const pages = doc.text.split('\f');
     if (pages.length <= 1) {
-      // Split by paragraphs to simulate pages
       const paragraphs = doc.text.split('\n\n').filter(p => p.trim().length > 0);
       const itemsPerPage = 3;
       const chunks = [];
@@ -214,7 +212,6 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
               {doc.fileName}
             </span>
           </div>
-
           <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-primary-container/10 text-primary text-[11px] font-bold border border-primary-container/20">
             <span className="material-symbols-outlined text-[14px]">lock</span>
             <span>SECURE LOCAL SESSION</span>
@@ -244,11 +241,9 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
 
       {/* Content Canvas */}
       <section className="flex-1 flex overflow-hidden p-4 gap-4 bg-background min-h-0">
-
-        {/* Left Pane: PDF Viewer / Summary tabs */}
+        
+        {/* Left Pane */}
         <div className="glass-card flex-[1.4] flex flex-col bg-surface-container-highest rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl min-w-0 relative h-full">
-          
-          {/* 1. TOP MAIN TABS HEADER (Absolute Layer 1 - Stay on very top) */}
           <div className="absolute top-0 left-0 right-0 h-11 z-30 backdrop-blur-xl backdrop-saturate-125 bg-surface-container-low/60 border-b border-gray-400/20 dark:border-gray-700/50 px-3 flex items-center justify-between shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
             <div className="flex h-full">
               <button
@@ -271,10 +266,7 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
           </div>
 
           {activeLeftTab === 'summary' ? (
-            /* ================= SUMMARY PANEL ================= */
             <div className="flex-grow flex flex-col h-full w-full relative">
-              
-              {/* 2. SUMMARY SUB-TABS (Absolute Layer 2 - Layered exactly below main tabs) */}
               <div className="absolute top-11 left-0 right-0 h-11 z-25 backdrop-blur-lg backdrop-saturate-125 bg-surface-container-lowest/65 border-b border-outline-variant/10 p-1.5 flex gap-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
                 {['short', 'detailed', 'bullet', 'executive'].map((type) => (
                   <button
@@ -291,13 +283,11 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                 ))}
               </div>
 
-              {/* SCROLL CONTAINER: pt-[88px] covers both main header (44px) + sub-tabs (44px) */}
               <div className="flex-grow overflow-y-auto pt-[88px] p-8 custom-scrollbar h-full">
                 {doc.status !== 'Ready for Chat' ? (
                   <div className="flex flex-col items-center justify-center h-full text-center mt-10">
                     <span className="material-symbols-outlined text-4xl text-outline animate-spin mb-3">sync</span>
                     <p className="text-body-md font-bold text-on-surface">Summarizing Document...</p>
-                    <p className="text-body-sm text-outline mt-1">Please wait while our local AI extracts text and processes summaries.</p>
                   </div>
                 ) : (
                   <div
@@ -308,10 +298,7 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
               </div>
             </div>
           ) : (
-            /* ================= PDF DOCUMENT VIEWER ================= */
             <div className="flex-grow flex flex-col h-full w-full relative">
-              
-              {/* 2. DOCUMENT CONTROL TOOLBAR (Absolute Layer 2 - Layered exactly below main tabs) */}
               <div className="absolute top-11 left-0 right-0 h-10 z-25 backdrop-blur-lg backdrop-saturate-125 bg-surface-container-highest/60 border-b border-gray-400/20 dark:border-gray-700/50 flex items-center justify-between px-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-0.5 text-on-surface-variant">
@@ -352,7 +339,6 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                 </div>
               </div>
 
-              {/* SCROLL CONTAINER: pt-[84px] covers main header (44px) + toolbar (40px) */}
               <div className="flex-grow overflow-auto bg-surface-container-low/20 pt-[84px] p-6 h-full">
                 <div
                   className="bg-white dark:bg-gray-800 w-full max-w-[800px] bg-surface-container shadow-pro min-h-[700px] p-10 space-y-4 border border-outline-variant/20 dark:border-gray-700 rounded mx-auto"
@@ -373,11 +359,8 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
 
         {/* Right Pane: AI Chat */}
         <div className="flex-1 flex flex-col bg-surface-container-highest rounded-xl border border-gray-400/20 dark:border-gray-800 overflow-hidden shadow-xl min-w-0 relative">
-
-          {/* Main Scroll Container */}
           <div className="flex-grow overflow-y-auto scrollbar-hide flex flex-col relative">
-
-            {/* WINDOWS 11 ACRYLIC HEADER */}
+            
             <div className="sticky top-0 z-10 backdrop-blur-xl backdrop-saturate-125 bg-surface-container-highest/65 border-b border-gray-400/20 dark:border-gray-800/60 h-10 flex items-center justify-between px-4 shrink-0 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -385,58 +368,35 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                 </span>
                 <span className="text-[13px] font-medium tracking-wide text-on-surface">Document Assistant</span>
               </div>
-
               <div className="flex items-center gap-2">
-                <button
-                  onClick={downloadChat}
-                  className="text-outline hover:text-primary transition-all duration-150 p-1 rounded hover:bg-white/5 dynamic-click"
-                  title="Download Chat History"
-                >
+                <button onClick={downloadChat} className="text-outline hover:text-primary transition-all p-1 rounded hover:bg-white/5" title="Download Chat">
                   <span className="material-symbols-outlined text-[18px]">download_done</span>
                 </button>
-                <button
-                  onClick={handleClearChat}
-                  className="text-outline hover:text-error transition-all duration-150 p-1 rounded hover:bg-white/5 dynamic-click"
-                  title="Clear Chat"
-                >
+                <button onClick={handleClearChat} className="text-outline hover:text-error transition-all p-1 rounded hover:bg-white/5" title="Clear Chat">
                   <span className="material-symbols-outlined text-[18px]">delete_sweep</span>
                 </button>
               </div>
             </div>
 
-            {/* Messages display area */}
             <div className="flex-grow p-4 space-y-6">
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : ''}`}>
                   {msg.sender === 'ai' && (
-                    <div className="w-7 h-7 rounded-lg bg-surface-container-low flex items-center justify-center shrink-0 border border-gray-400/20 dark:border-gray-800">
+                    <div className="w-7 h-7 rounded-lg bg-surface-container-low flex items-center justify-center shrink-0 border border-gray-400/20">
                       <span className="material-symbols-outlined text-primary text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                         auto_awesome
                       </span>
                     </div>
                   )}
-
                   <div className={`flex-1 space-y-3 ${msg.sender === 'user' ? 'max-w-[85%] flex-grow-1' : ''}`}>
                     <div className={`p-3.5 rounded-xl border leading-relaxed shadow-sm ${msg.sender === 'user'
-                      ? 'dark:bg-surface-container-low bg-primary-container border-gray-400/20 dark:border-gray-800 rounded-tr-none text-on-surface text-body-sm'
-                      : 'bg-surface-container-low dark:bg-surface-container-lowest border-gray-400/20 dark:border-gray-800 rounded-tl-none text-on-surface text-body-sm'
+                      ? 'bg-primary-container border-gray-400/20 text-on-surface text-body-sm'
+                      : 'bg-surface-container-low border-gray-400/20 text-on-surface text-body-sm'
                       }`}>
                       {msg.sender === 'ai' ? (
                         <div className="prose prose-sm" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
                       ) : (
                         <p className="whitespace-pre-wrap">{msg.text}</p>
-                      )}
-
-                      {msg.sender === 'ai' && msg.id !== 'welcome' && (
-                        <div className="pt-2 mt-2 flex items-center justify-end gap-3 border-t border-gray-400/20 dark:border-gray-800/50">
-                          <button
-                            onClick={() => copyToClipboard(msg.text)}
-                            className="material-symbols-outlined text-outline hover:text-primary text-[16px] transition-colors"
-                            title="Copy Answer"
-                          >
-                            content_copy
-                          </button>
-                        </div>
                       )}
                     </div>
 
@@ -446,7 +406,7 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                           <button
                             key={idx}
                             onClick={() => handleSend(sug)}
-                            className="px-3 py-1.5 rounded-full bg-surface-container-highest border border-gray-400/20 dark:border-gray-800 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary transition-all text-left"
+                            className="px-3 py-1.5 rounded-full bg-surface-container-highest border border-gray-400/20 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary transition-all text-left"
                           >
                             {sug}
                           </button>
@@ -454,9 +414,8 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                       </div>
                     )}
                   </div>
-
                   {msg.sender === 'user' && (
-                    <div className="w-7 h-7 rounded-lg bg-surface-container-highest flex items-center justify-center shrink-0 border border-gray-400/20 dark:border-gray-800">
+                    <div className="w-7 h-7 rounded-lg bg-surface-container-highest flex items-center justify-center shrink-0 border border-gray-400/20">
                       <span className="material-symbols-outlined text-on-surface-variant text-[16px]">person</span>
                     </div>
                   )}
@@ -470,18 +429,16 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                       progress_activity
                     </span>
                   </div>
-                  <div className="bg-surface-container-low/60 border-gray-400/20 dark:border-gray-800 p-3.5 rounded-xl rounded-tl-none max-w-[80%]">
+                  <div className="bg-surface-container-low/60 p-3.5 rounded-xl rounded-tl-none max-w-[80%]">
                     <span className="text-body-sm text-outline italic">AI is formulating response...</span>
                   </div>
                 </div>
               )}
-
               <div ref={messagesEndRef} />
             </div>
 
-            {/* WINDOWS 11 ACRYLIC FOOTER */}
-            <div className="sticky bottom-0 z-10 backdrop-blur-xl backdrop-saturate-125 bg-surface-container-highest/65 p-4 border-t border-gray-400/20 dark:border-gray-800/60 shrink-0 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
-              <div className="relative flex items-end gap-2 bg-surface-container-low/40 rounded-xl border border-gray-400/20 dark:border-gray-800 p-2.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm">
+            <div className="sticky bottom-0 z-10 backdrop-blur-xl backdrop-saturate-125 bg-surface-container-highest/65 p-4 border-t border-gray-400/20 shrink-0">
+              <div className="relative flex items-end gap-2 bg-surface-container-low/40 rounded-xl border border-gray-400/20 p-2.5 focus-within:border-primary transition-all shadow-sm">
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
@@ -491,24 +448,20 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
                       handleSend();
                     }
                   }}
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-body-sm py-1.5 resize-none scrollbar-hide max-h-32 min-h-[36px] outline-none text-on-surface"
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-body-sm py-1.5 resize-none outline-none text-on-surface"
                   placeholder="Ask about this document..."
                   rows={1}
                 />
-
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => handleSend()}
                     disabled={loading || !inputText.trim()}
-                    className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center hover:brightness-105 active:scale-[0.97] transition-all disabled:opacity-40"
+                    className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center hover:brightness-105 transition-all disabled:opacity-40"
                   >
-                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'wght' 600" }}>
-                      arrow_upward
-                    </span>
+                    <span className="material-symbols-outlined text-[20px]">arrow_upward</span>
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-center text-outline mt-2 tracking-wide">AI-generated content. All processing is secure.</p>
             </div>
 
           </div>
@@ -516,4 +469,4 @@ export default function Chat({ docId, documents, refreshDocuments, onNewSummary 
       </section>
     </main>
   );
-}
+} 
