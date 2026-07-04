@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
@@ -7,6 +9,8 @@ const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
+  connectTimeout: 60000,
+  enableKeepAlive: true,
 };
 
 const DEFAULT_DOCUMENT_SUMMARIES = {
@@ -16,7 +20,37 @@ const DEFAULT_DOCUMENT_SUMMARIES = {
   executive: "",
 };
 
+const MAX_TEXT_CHARS_FOR_DB = 160000;
+const TEXT_STORAGE_DIRECTORY = path.join(process.cwd(), "uploads");
+
 let pool;
+
+const isTransientConnectionError = (error) => {
+  const message = (error?.message || "").toLowerCase();
+  return [
+    "econnreset",
+    "protocol_connection_lost",
+    "protocol_enqueu_after_fatal_error",
+    "connection lost",
+    "connection closed",
+    "terminated unexpectedly",
+    "socket hang up",
+    "etimedout",
+  ].some((fragment) => message.includes(fragment));
+};
+
+const reconnectDatabase = async () => {
+  if (pool) {
+    try {
+      await pool.end();
+    } catch (cleanupError) {
+      console.warn("Failed to close MySQL pool during reconnect:", cleanupError.message);
+    }
+  }
+
+  pool = null;
+  await initDatabase();
+};
 
 const parseJsonValue = (value, fallback) => {
   if (value === null || value === undefined || value === "") {
@@ -47,6 +81,52 @@ const stringifyJsonValue = (value, fallback) => {
   return JSON.stringify(source);
 };
 
+const ensureTextStorageDirectory = () => {
+  fs.mkdirSync(TEXT_STORAGE_DIRECTORY, { recursive: true });
+  return TEXT_STORAGE_DIRECTORY;
+};
+
+const loadTextFromStorage = (textFilePath) => {
+  if (!textFilePath) return null;
+
+  try {
+    if (fs.existsSync(textFilePath)) {
+      return fs.readFileSync(textFilePath, "utf8");
+    }
+  } catch (error) {
+    console.warn("Failed to load stored document text:", error.message);
+  }
+
+  return null;
+};
+
+const persistLargeTextIfNeeded = (document) => {
+  if (!document || typeof document.text !== "string") {
+    return document;
+  }
+
+  if (!document.text || document.text.length <= MAX_TEXT_CHARS_FOR_DB) {
+    return document;
+  }
+
+  ensureTextStorageDirectory();
+  const targetPath = path.join(TEXT_STORAGE_DIRECTORY, `${document.id || "document"}.txt`);
+
+  if (!document.textFilePath || document.textFilePath !== targetPath) {
+    try {
+      fs.writeFileSync(targetPath, document.text, "utf8");
+    } catch (error) {
+      console.warn("Failed to persist large document text to disk:", error.message);
+    }
+  }
+
+  return {
+    ...document,
+    text: document.text.slice(0, MAX_TEXT_CHARS_FOR_DB),
+    textFilePath: targetPath,
+  };
+};
+
 const normalizeDocumentRow = (row) => {
   if (!row) return null;
 
@@ -54,6 +134,10 @@ const normalizeDocumentRow = (row) => {
   const chunks = parseJsonValue(row.chunks, []);
   const summaries = parseJsonValue(row.summaries, DEFAULT_DOCUMENT_SUMMARIES);
   const chatHistory = parseJsonValue(row.chat_history, []);
+  const storedText = row.text || "";
+  const textFilePath = row.text_file_path || "";
+  const textFromStorage = loadTextFromStorage(textFilePath);
+  const fullText = textFromStorage || storedText;
 
   return {
     id: row.id,
@@ -65,13 +149,14 @@ const normalizeDocumentRow = (row) => {
     status: row.status,
     tags: Array.isArray(tags) ? tags : [],
     pageCount: Number.isFinite(Number(row.page_count)) ? Number(row.page_count) : 1,
-    text: row.text || "",
+    text: fullText || "",
     chunks: Array.isArray(chunks) ? chunks : [],
     summaries: summaries && typeof summaries === "object" && !Array.isArray(summaries)
       ? summaries
       : { ...DEFAULT_DOCUMENT_SUMMARIES },
     chatHistory: Array.isArray(chatHistory) ? chatHistory : [],
     recentOverview: row.recent_overview || "",
+    textFilePath: textFilePath || "",
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
   };
@@ -82,21 +167,24 @@ const serializeDocument = (document) => {
     throw new Error("Document id is required.");
   }
 
+  const preparedDocument = persistLargeTextIfNeeded(document);
+
   return {
-    id: document.id,
-    user_id: document.userId,
-    file_name: document.fileName || "",
-    file_size: document.fileSize || "",
-    file_path: document.filePath || "",
-    upload_date: document.uploadDate || "",
-    status: document.status || "Uploading",
-    tags: stringifyJsonValue(document.tags, []),
-    page_count: Number.isFinite(Number(document.pageCount)) ? Number(document.pageCount) : 1,
-    text: document.text || "",
-    chunks: stringifyJsonValue(document.chunks, []),
-    summaries: stringifyJsonValue(document.summaries, DEFAULT_DOCUMENT_SUMMARIES),
-    chat_history: stringifyJsonValue(document.chatHistory, []),
-    recent_overview: document.recentOverview || "",
+    id: preparedDocument.id,
+    user_id: preparedDocument.userId,
+    file_name: preparedDocument.fileName || "",
+    file_size: preparedDocument.fileSize || "",
+    file_path: preparedDocument.filePath || "",
+    upload_date: preparedDocument.uploadDate || "",
+    status: preparedDocument.status || "Uploading",
+    tags: stringifyJsonValue(preparedDocument.tags, []),
+    page_count: Number.isFinite(Number(preparedDocument.pageCount)) ? Number(preparedDocument.pageCount) : 1,
+    text: preparedDocument.text || "",
+    chunks: stringifyJsonValue(preparedDocument.chunks, []),
+    summaries: stringifyJsonValue(preparedDocument.summaries, DEFAULT_DOCUMENT_SUMMARIES),
+    chat_history: stringifyJsonValue(preparedDocument.chatHistory, []),
+    recent_overview: preparedDocument.recentOverview || "",
+    text_file_path: preparedDocument.textFilePath || null,
   };
 };
 
@@ -113,6 +201,10 @@ export async function initDatabase() {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
+    });
+
+    pool.on("error", (error) => {
+      console.error("MySQL pool error:", error.message);
     });
 
     const createUsersTableQuery = `
@@ -137,6 +229,7 @@ export async function initDatabase() {
         tags LONGTEXT NULL,
         page_count INT NOT NULL DEFAULT 1,
         text LONGTEXT NULL,
+        text_file_path TEXT NULL,
         chunks LONGTEXT NULL,
         summaries LONGTEXT NULL,
         chat_history LONGTEXT NULL,
@@ -150,6 +243,7 @@ export async function initDatabase() {
 
     await pool.query(createUsersTableQuery);
     await pool.query(createDocumentsTableQuery);
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS text_file_path TEXT NULL`);
 
     console.log("MySQL database initialized successfully.");
   } catch (error) {
@@ -232,50 +326,70 @@ export async function saveDocument(document) {
     serialized.tags,
     serialized.page_count,
     serialized.text,
+    serialized.text_file_path,
     serialized.chunks,
     serialized.summaries,
     serialized.chat_history,
     serialized.recent_overview,
   ];
 
-  await pool.query(
-    `
-      INSERT INTO documents (
-        id,
-        user_id,
-        file_name,
-        file_size,
-        file_path,
-        upload_date,
-        status,
-        tags,
-        page_count,
-        text,
-        chunks,
-        summaries,
-        chat_history,
-        recent_overview
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        user_id = VALUES(user_id),
-        file_name = VALUES(file_name),
-        file_size = VALUES(file_size),
-        file_path = VALUES(file_path),
-        upload_date = VALUES(upload_date),
-        status = VALUES(status),
-        tags = VALUES(tags),
-        page_count = VALUES(page_count),
-        text = VALUES(text),
-        chunks = VALUES(chunks),
-        summaries = VALUES(summaries),
-        chat_history = VALUES(chat_history),
-        recent_overview = VALUES(recent_overview),
-        updated_at = CURRENT_TIMESTAMP
-    `,
-    values
-  );
+  const querySql = `
+    INSERT INTO documents (
+      id,
+      user_id,
+      file_name,
+      file_size,
+      file_path,
+      upload_date,
+      status,
+      tags,
+      page_count,
+      text,
+      text_file_path,
+      chunks,
+      summaries,
+      chat_history,
+      recent_overview
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      user_id = VALUES(user_id),
+      file_name = VALUES(file_name),
+      file_size = VALUES(file_size),
+      file_path = VALUES(file_path),
+      upload_date = VALUES(upload_date),
+      status = VALUES(status),
+      tags = VALUES(tags),
+      page_count = VALUES(page_count),
+      text = VALUES(text),
+      text_file_path = VALUES(text_file_path),
+      chunks = VALUES(chunks),
+      summaries = VALUES(summaries),
+      chat_history = VALUES(chat_history),
+      recent_overview = VALUES(recent_overview),
+      updated_at = CURRENT_TIMESTAMP
+  `;
 
-  return document;
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await pool.query(querySql, values);
+      return document;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientConnectionError(error) || attempt === 3) {
+        throw error;
+      }
+
+      console.warn(`MySQL connection reset during saveDocument; retrying (${attempt}/3)...`);
+      try {
+        await reconnectDatabase();
+      } catch (reconnectError) {
+        console.error("Failed to reconnect to MySQL after transient error:", reconnectError.message);
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 export async function deleteDocumentById(id, userId = null) {

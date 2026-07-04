@@ -1,7 +1,12 @@
 {
   "guest_m0v8ia3x70c502ufl7qebr": {
-    "used": 1,
+    "used": 0,
     "periodStart": "2026-07-03T11:01:37.212Z",
     "resetAt": "2026-08-03T11:01:37.212Z"
+  },
+  "guest_default": {
+    "used": 0,
+    "periodStart": "2026-07-04T07:21:55.393Z",
+    "resetAt": "2026-08-04T07:21:55.393Z"
   }
 }

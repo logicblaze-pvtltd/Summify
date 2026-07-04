@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useGoogleLogin } from '@react-oauth/google';
-
+import SumifyLoader from '../components/SumifyLoader';
 export default function Register({ onLoginSuccess }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -17,7 +17,6 @@ export default function Register({ onLoginSuccess }) {
   const googleFocusListenerRef = useRef(null);
   const navigate = useNavigate();
   const { showToast } = useFeedback();
-
   const setGoogleLoadingState = (value) => {
     googleLoadingRef.current = value;
     setGoogleLoading(value);
@@ -192,7 +191,7 @@ export default function Register({ onLoginSuccess }) {
               <line x1="62" y1="102" x2="87" y2="102" stroke="url(#sumifyGradient)" strokeWidth="6.5" strokeLinecap="round" />
             </g>
             <text x="215" y="152" fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" fontSize="120" fontWeight="800" fill="#47AF8F" className="dark:fill-[#73D9B7]" letterSpacing="-2.5">
-              Sum<tspan fill="url(#sumifyGradient)">ify</tspan>
+              Summ<tspan fill="url(#sumifyGradient)">ify</tspan>
             </text>
             <text x="220" y="192" fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" fontSize="24" fontWeight="700" fill="#067357" letterSpacing="5" opacity="0.8">
               PDF SUMMARIZER

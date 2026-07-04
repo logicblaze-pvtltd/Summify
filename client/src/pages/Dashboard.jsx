@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFeedback } from '../components/FeedbackProvider';
 
@@ -8,7 +8,20 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
   const [dragActive, setDragActive] = useState(false);
   const [processingFile, setProcessingFile] = useState(null);
   const [processingStatus, setProcessingStatus] = useState('');
+  const [processStartTime, setProcessStartTime] = useState(null);
+  const [currentStepStartTime, setCurrentStepStartTime] = useState(null);
+  const [currentStepElapsed, setCurrentStepElapsed] = useState(0);
+  const [currentTotalElapsed, setCurrentTotalElapsed] = useState(0);
+  const [stepDurations, setStepDurations] = useState({});
+  const prevStatusRef = useRef('');
   const [uploadedCount, setUploadedCount] = useState(0);
+  const processingSteps = [
+    'Uploading',
+    'Processing',
+    'Performing Urdu OCR',
+    'Creating embeddings',
+    'Generating summary',
+  ];
   // Stats calculations based on actual documents
   const totalAnalyzed = documents.length;
   const guestLimit = guestQuota?.limit ?? 5;
@@ -31,11 +44,30 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
     if (processingFile) {
       intervalId = setInterval(async () => {
         try {
-          const res = await fetch(`/api/documents/${processingFile.id}`);
+          const res = await fetch(`/api/documents/${processingFile.id}`, {
+            headers: { 'x-disable-global-loader': '1' },
+          });
           if (res.ok) {
             const doc = await res.json();
-            setProcessingStatus(doc.status);
+            if (doc.status !== prevStatusRef.current) {
+              if (prevStatusRef.current) {
+                const elapsed = currentStepStartTime
+                  ? Math.round((Date.now() - currentStepStartTime) / 1000)
+                  : 0;
+                setStepDurations((prev) => ({
+                  ...prev,
+                  [prevStatusRef.current]: elapsed,
+                }));
+              }
+              prevStatusRef.current = doc.status;
+              setCurrentStepStartTime(Date.now());
+              setCurrentStepElapsed(0);
+              setProcessingStatus(doc.status);
+            }
+
             if (doc.status === 'Ready for Chat') {
+              setCurrentStepElapsed(0);
+              setCurrentTotalElapsed(0);
               setProcessingFile(null);
               setProcessingStatus('');
               refreshDocuments();
@@ -47,6 +79,8 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
                 tone: 'danger',
                 confirmText: 'Close'
               });
+              setCurrentStepElapsed(0);
+              setCurrentTotalElapsed(0);
               setProcessingFile(null);
               setProcessingStatus('');
               refreshDocuments();
@@ -58,7 +92,7 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
       }, 1500);
     }
     return () => clearInterval(intervalId);
-  }, [processingFile]);
+  }, [processingFile, currentStepStartTime, refreshDocuments, onSelectDocument, showAlert]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -109,6 +143,12 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
   const uploadFile = async (file) => {
     setProcessingFile({ name: file.name, id: null });
     setProcessingStatus('Uploading');
+    setProcessStartTime(Date.now());
+    setCurrentStepStartTime(Date.now());
+    setCurrentStepElapsed(0);
+    setCurrentTotalElapsed(0);
+    setStepDurations({});
+    prevStatusRef.current = 'Uploading';
 
     const formData = new FormData();
     formData.append('pdf', file);
@@ -116,11 +156,24 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
     try {
       const response = await fetch('/api/upload', {
         method: 'POST',
+        headers: {
+          'x-disable-global-loader': '1',
+        },
         body: formData
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 400 && errorData.error === 'Page limit exceeded') {
+          showToast({
+            title: 'Too many pages',
+            message: errorData.message || 'PDF cannot exceed 50 pages.',
+            tone: 'warning',
+          });
+          setProcessingFile(null);
+          setProcessingStatus('');
+          return;
+        }
         if (response.status === 403) {
           const wantsToSignUp = await showConfirm({
             title: 'Upload limit reached',
@@ -150,22 +203,18 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
         tone: 'danger',
         confirmText: 'Close'
       });
+      setCurrentStepElapsed(0);
+      setCurrentTotalElapsed(0);
       setProcessingFile(null);
       setProcessingStatus('');
     }
   };
   const handleUploadClick = (e) => {
-    // Agar limit reach ho chuki hai to file dialog ko open mat hone do
     if (uploadedCount >= 5) {
-      e.preventDefault(); // Default file input trigger ko rokta hai
-      e.stopPropagation(); // Event bubbling stop karta hai
-
-      setModalOpen(true); // Sirf aapka modal open hoga
+      e.preventDefault();
+      e.stopPropagation();
       return;
     }
-
-    // Agar limit clear hai to file input click trigger ho
-    fileInputRef.current.click();
   };
   const handleDeleteDoc = async (e, id) => {
     e.stopPropagation();
@@ -217,6 +266,18 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
       default: return 10;
     }
   };
+
+  useEffect(() => {
+    if (!processingFile || !currentStepStartTime || !processStartTime) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setCurrentStepElapsed(Math.round((now - currentStepStartTime) / 1000));
+      setCurrentTotalElapsed(Math.round((now - processStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [processingFile, currentStepStartTime, processStartTime]);
 
   return (
     <div className="p-margin-desktop space-y-12 max-w-7xl mx-auto w-full">
@@ -296,26 +357,27 @@ export default function Dashboard({ onSelectDocument, documents, refreshDocument
                 <div className="w-full h-3 bg-surface-container-highest rounded-full overflow-hidden mb-4 p-[2px] border border-outline-variant/20 dark:border-gray-400/50">
                   <div className="h-full bg-primary rounded-full transition-all duration-500 ease-out" style={{ width: `${getProgressPercentage(processingStatus)}%` }}></div>
                 </div>
-                <div className="text-left bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/20 dark:border-gray-400/50 space-y-2 text-xs font-medium text-on-surface-variant">
-                  <div className={`flex items-center gap-2 ${processingStatus === 'Uploading' ? 'text-primary font-bold' : 'text-outline'}`}>
-                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 20 ? 'check_circle' : 'radio_button_checked'}</span>
-                    <span>Uploading file to cloud workspace</span>
+                <div className="text-left bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/20 dark:border-gray-400/50 space-y-3 text-xs font-medium text-on-surface-variant">
+                  <div className="flex items-center justify-between text-[13px] font-semibold text-on-surface">
+                    <span>Current Step</span>
+                    <span className="font-mono">{processingStatus} · {currentStepElapsed}s · Total {currentTotalElapsed}s</span>
                   </div>
-                  <div className={`flex items-center gap-2 ${processingStatus === 'Processing' ? 'text-primary font-bold' : 'text-outline'}`}>
-                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 40 ? 'check_circle' : 'radio_button_unchecked'}</span>
-                    <span>Extracting structure & layouts</span>
-                  </div>
-                  <div className={`flex items-center gap-2 ${processingStatus === 'Performing Urdu OCR' ? 'text-primary font-bold' : 'text-outline'}`}>
-                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 60 ? 'check_circle' : 'radio_button_unchecked'}</span>
-                    <span>Running Urdu OCR Engine (If Scanned)</span>
-                  </div>
-                  <div className={`flex items-center gap-2 ${processingStatus === 'Creating embeddings' ? 'text-primary font-bold' : 'text-outline'}`}>
-                    <span className="material-symbols-outlined text-sm">{getProgressPercentage(processingStatus) > 80 ? 'check_circle' : 'radio_button_unchecked'}</span>
-                    <span>Vectorizing content into analytics cluster</span>
-                  </div>
-                  <div className={`flex items-center gap-2 ${processingStatus === 'Generating summary' ? 'text-primary font-bold' : 'text-outline'}`}>
-                    <span className="material-symbols-outlined text-sm">{processingStatus === 'Generating summary' ? 'hourglass_top' : 'radio_button_unchecked'}</span>
-                    <span>Compiling context insights</span>
+                  <div className="grid gap-2">
+                    {processingSteps.map((step) => {
+                      const isActive = processingStatus === step;
+                      const stepTime = stepDurations[step] != null
+                        ? `${stepDurations[step]}s`
+                        : isActive
+                          ? `${currentStepElapsed}s`
+                          : '--';
+
+                      return (
+                        <div key={step} className={`flex items-center justify-between ${isActive ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>
+                          <span>{step}</span>
+                          <span className="font-mono text-[11px]">{stepTime}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

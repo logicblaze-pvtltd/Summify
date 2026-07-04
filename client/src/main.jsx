@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { FeedbackProvider } from './components/FeedbackProvider'
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import './index.css'
+import './tailwind.css'
 import App from './App.jsx'
 // Generate guest session ID if not present
 let guestSessionId = localStorage.getItem('guestSessionId');

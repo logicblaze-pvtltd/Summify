@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import SumifyLoader from './components/SumifyLoader';
 import Dashboard from './pages/Dashboard';
 import Library from './pages/Library';
 import Chat from './pages/Chat';
@@ -23,6 +24,8 @@ export default function App() {
   });
 
   const [documents, setDocuments] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
   const [guestQuota, setGuestQuota] = useState(null);
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -44,13 +47,14 @@ export default function App() {
 
   // Fetch documents from server
   const refreshDocuments = async () => {
+    setIsLoading(true);
     try {
       const [documentsResponse, quotaResponse] = await Promise.all([
         fetch('/api/documents'),
         token ? Promise.resolve(null) : fetch('/api/guest/quota')
       ]);
 
-      if (documentsResponse.ok) {
+      if (documentsResponse && documentsResponse.ok) {
         const data = await documentsResponse.json();
         setDocuments(data);
       }
@@ -65,12 +69,79 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error fetching documents:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     refreshDocuments();
   }, [token]);
+
+  // Wait for window load and fonts to be ready (prevents icon fallbacks showing text)
+  useEffect(() => {
+    let cancelled = false;
+
+    const waitForResources = async () => {
+      try {
+        const fontReady = document.fonts ? document.fonts.ready : Promise.resolve();
+        const windowLoaded = new Promise((resolve) => {
+          if (document.readyState === 'complete') return resolve();
+          window.addEventListener('load', resolve, { once: true });
+        });
+
+        await Promise.all([fontReady, windowLoaded]);
+        if (!cancelled) setFontsLoaded(true);
+      } catch (err) {
+        if (!cancelled) setFontsLoaded(true);
+      }
+    };
+
+    waitForResources();
+    return () => { cancelled = true; };
+  }, []);
+  
+  // Globally wrap window.fetch to show loader during network requests,
+  // but allow internal polling to opt out when it should not show the page loader.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.fetch) return;
+    const originalFetch = window.fetch.bind(window);
+    let activeRequests = 0;
+
+    const wrappedFetch = (resource, init = {}) => {
+      const request = new Request(resource, init);
+      const disableLoader = request.headers.get('x-disable-global-loader') === '1';
+      if (disableLoader) {
+        return originalFetch(request);
+      }
+
+      activeRequests += 1;
+      setIsLoading(true);
+      return originalFetch(request).finally(() => {
+        activeRequests -= 1;
+        if (activeRequests <= 0) {
+          activeRequests = 0;
+          setIsLoading(false);
+        }
+      });
+    };
+
+    window.fetch = wrappedFetch;
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
+  // Prevent background interaction/scroll while loader is visible
+  useEffect(() => {
+    const locked = isLoading || !fontsLoaded;
+    if (locked) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isLoading, fontsLoaded]);
 
   // Sync theme with HTML document element and persist to localStorage
   useEffect(() => {
@@ -123,88 +194,93 @@ export default function App() {
 
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
-  if (isAuthPage) {
-    return (
-      <Routes>
-        <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-        <Route path="/register" element={<Register onLoginSuccess={handleLoginSuccess} />} />
-      </Routes>
-    );
-  }
-
   return (
     <div className={`flex min-h-screen bg-background text-on-surface transition-colors duration-200 ${theme === 'dark' ? 'dark-mode' : ''}`}>
-      {/* Sidebar Navigation */}
-      <Sidebar
-        onNewSummary={handleNewSummary}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={handleToggleSidebar}
-        user={user}
-        onLogout={handleLogout}
-        onLogin={() => navigate('/login')}
-      />
+      {(isLoading || !fontsLoaded) && (
+        <div className={`fixed inset-0 flex items-center justify-center ${theme === 'dark' ? 'bg-black' : 'bg-white'} transition-opacity duration-200`} style={{ zIndex: 99999 }}>
+          <SumifyLoader />
+        </div>
+      )}
+      {isAuthPage ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Routes>
+            <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+            <Route path="/register" element={<Register onLoginSuccess={handleLoginSuccess} />} />
+          </Routes>
+        </div>
+      ) : (
+        <>
+          {/* Sidebar Navigation */}
+          <Sidebar
+            onNewSummary={handleNewSummary}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+            user={user}
+            onLogout={handleLogout}
+            onLogin={() => navigate('/login')}
+          />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden h-screen">
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <Dashboard
-                onSelectDocument={handleSelectDocument}
-                documents={documents}
-                refreshDocuments={refreshDocuments}
-                user={user}
-                guestQuota={guestQuota}
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden h-screen">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <Dashboard
+                    onSelectDocument={handleSelectDocument}
+                    documents={documents}
+                    refreshDocuments={refreshDocuments}
+                    user={user}
+                    guestQuota={guestQuota}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/library"
-            element={
-              <Library
-                documents={documents}
-                refreshDocuments={refreshDocuments}
-                onSelectDocument={handleSelectDocument}
+              <Route
+                path="/library"
+                element={
+                  <Library
+                    documents={documents}
+                    refreshDocuments={refreshDocuments}
+                    onSelectDocument={handleSelectDocument}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/chats"
-            element={
-              <Chat
-                documents={documents}
-                refreshDocuments={refreshDocuments}
-                onNewSummary={handleNewSummary}
-                user={user}
+              <Route
+                path="/chats"
+                element={
+                  <Chat
+                    documents={documents}
+                    refreshDocuments={refreshDocuments}
+                    onNewSummary={handleNewSummary}
+                    user={user}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/chats/:docId"
-            element={
-              <Chat
-                documents={documents}
-                refreshDocuments={refreshDocuments}
-                onNewSummary={handleNewSummary}
-                user={user}
+              <Route
+                path="/chats/:docId"
+                element={
+                  <Chat
+                    documents={documents}
+                    refreshDocuments={refreshDocuments}
+                    onNewSummary={handleNewSummary}
+                    user={user}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <Settings
-                theme={theme}
-                onThemeChange={setTheme}
-                refreshDocuments={refreshDocuments}
+              <Route
+                path="/settings"
+                element={
+                  <Settings
+                    theme={theme}
+                    onThemeChange={setTheme}
+                    refreshDocuments={refreshDocuments}
+                  />
+                }
               />
-            }
-          />
-        </Routes>
+            </Routes>
 
-        {/* Mobile Bottom Navigation (Visible only on mobile devices) */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-surface/90 backdrop-blur-lg border-t border-outline-variant flex items-center justify-around px-4 z-50 rounded-t-3xl shadow-2xl">
+            {/* Mobile Bottom Navigation (Visible only on mobile devices) */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-surface/90 backdrop-blur-lg border-t border-outline-variant flex items-center justify-around px-4 z-50 rounded-t-3xl shadow-2xl">
           <button
             onClick={() => navigate('/')}
             className={`flex flex-col items-center gap-1 ${getCurrentView() === 'dashboard' ? 'text-primary' : 'text-outline'}`}
@@ -239,6 +315,8 @@ export default function App() {
           </button>
         </nav>
       </div>
+          </>
+      )}
     </div>
   );
 }

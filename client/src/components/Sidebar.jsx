@@ -57,12 +57,12 @@ export default function Sidebar({
           <svg className="" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="100%" height="100%">
             <defs>
               <linearGradient id="sumifyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#47AF8F" />
-                <stop offset="100%" stop-color="#067357" />
+                <stop offset="0%" stopColor="#47AF8F" />
+                <stop offset="100%" stopColor="#067357" />
               </linearGradient>
 
               <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="3" dy="8" stdDeviation="6" flood-color="#73D9B7" flood-opacity="0.12" />
+                <feDropShadow dx="3" dy="8" stdDeviation="6" floodColor="#73D9B7" floodOpacity="0.12" />
               </filter>
             </defs>
 
@@ -76,19 +76,19 @@ export default function Sidebar({
 
               <rect x="42" y="40" width="100" height="100" rx="10" fill="#73D9B7" />
 
-              <line x1="62" y1="68" x2="112" y2="68" stroke="#F5F6FB" stroke-width="5.5" stroke-linecap="round" opacity="0.9" />
-              <line x1="62" y1="85" x2="102" y2="85" stroke="#F5F6FB" stroke-width="5.5" stroke-linecap="round" opacity="0.9" />
+              <line x1="62" y1="68" x2="112" y2="68" stroke="#F5F6FB" strokeWidth="5.5" strokeLinecap="round" opacity="0.9" />
+              <line x1="62" y1="85" x2="102" y2="85" stroke="#F5F6FB" strokeWidth="5.5" strokeLinecap="round" opacity="0.9" />
 
-              <line x1="62" y1="102" x2="87" y2="102" stroke="url(#sumifyGradient)" stroke-width="6.5" stroke-linecap="round" />
+              <line x1="62" y1="102" x2="87" y2="102" stroke="url(#sumifyGradient)" strokeWidth="6.5" strokeLinecap="round" />
             </g>
 
             {!isCollapsed && (
               <>
-                <text x="215" y="152" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="120" font-weight="800" fill="#73D9B7" letter-spacing="-2.5">
-                  Sum<tspan fill="url(#sumifyGradient)">ify</tspan>
+                <text x="215" y="152" fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" fontSize="120" fontWeight="800" fill="#73D9B7" letterSpacing="-2.5">
+                  Summ<tspan fill="url(#sumifyGradient)">ify</tspan>
                 </text>
 
-                <text x="220" y="192" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="700" fill="#067357" letter-spacing="5" opacity="0.8">
+                <text x="220" y="192" fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" fontSize="24" fontWeight="700" fill="#067357" letterSpacing="5" opacity="0.8">
                   PDF SUMMARIZER
                 </text>
               </>

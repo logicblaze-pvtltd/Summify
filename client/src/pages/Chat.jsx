@@ -33,7 +33,9 @@ export default function Chat({ documents, refreshDocuments, onNewSummary, user }
       setLoadingDoc(true);
       const fetchFullDoc = async () => {
         try {
-          const res = await fetch(`/api/documents/${docId}`);
+          const res = await fetch(`/api/documents/${docId}`, {
+            headers: { 'x-disable-global-loader': '1' },
+          });
           if (res.ok && isMounted) {
             const data = await res.json();
             setFullDoc(data);
@@ -93,7 +95,10 @@ export default function Chat({ documents, refreshDocuments, onNewSummary, user }
     try {
       const response = await fetch(`/api/chat/${docId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-disable-global-loader': '1',
+        },
         body: JSON.stringify({ question: query })
       });
 
@@ -126,7 +131,10 @@ export default function Chat({ documents, refreshDocuments, onNewSummary, user }
 
     if (confirmed) {
       try {
-        const res = await fetch(`/api/chat/${docId}/clear`, { method: 'POST' });
+        const res = await fetch(`/api/chat/${docId}/clear`, {
+          method: 'POST',
+          headers: { 'x-disable-global-loader': '1' },
+        });
         if (res.ok) {
           setMessages([messages[0]]);
           refreshDocuments();

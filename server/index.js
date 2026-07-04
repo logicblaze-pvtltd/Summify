@@ -75,12 +75,33 @@ const LEGACY_DOCUMENTS_FILE = path.join(DATA_DIR, "documents.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const GUEST_USAGE_FILE = path.join(DATA_DIR, "guest-usage.json");
 const GUEST_UPLOAD_LIMIT = 5;
+const MAX_PDF_PAGES = 50;
 const DEFAULT_DOCUMENT_SUMMARIES = {
   short: "",
   detailed: "",
   bullet: "",
   executive: "",
 };
+
+async function getPdfPageCount(filePath) {
+  const fileBuffer = fs.readFileSync(filePath);
+
+  try {
+    const pdfData = await pdf(fileBuffer, { pagerender: () => "" });
+    return pdfData.numpages || 1;
+  } catch (err) {
+    console.warn("PDF page count fallback using image conversion:", err.message);
+
+    let pageCount = 0;
+    const documentPages = await pdfToImg.pdf(filePath, { scale: 1 });
+    for await (const _page of documentPages) {
+      pageCount += 1;
+      if (pageCount > MAX_PDF_PAGES) break;
+    }
+
+    return pageCount || 1;
+  }
+}
 
 // ============ AUTH ROUTES ============
 
@@ -798,6 +819,7 @@ app.delete("/api/documents/:id", authenticateToken, async (req, res) => {
 app.post("/api/upload", authenticateToken, upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) {
+      console.log("Upload attempt without a file.");
       return res.status(400).json({ error: "No file uploaded" });
     }
 
@@ -821,6 +843,17 @@ app.post("/api/upload", authenticateToken, upload.single("pdf"), async (req, res
     const docId = crypto.randomUUID();
     const filePath = req.file.path;
 
+    const pageCount = await getPdfPageCount(filePath);
+    if (pageCount > MAX_PDF_PAGES) {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      return res.status(400).json({
+        error: "Page limit exceeded",
+        message: `PDF may not exceed ${MAX_PDF_PAGES} pages. Please upload a shorter document.`,
+      });
+    }
+
     // Encoding fix for Urdu/Arabic filenames (Prevents corruption like Ã˜ÂºÃ˜Â²Ã™...)
     const fileName = Buffer.from(req.file.originalname, "latin1").toString(
       "utf8",
@@ -841,7 +874,7 @@ app.post("/api/upload", authenticateToken, upload.single("pdf"), async (req, res
       uploadDate,
       status: "Uploading",
       tags: ["#New"],
-      pageCount: 1,
+      pageCount,
       text: "",
       chunks: [],
       summaries: { ...DEFAULT_DOCUMENT_SUMMARIES },
